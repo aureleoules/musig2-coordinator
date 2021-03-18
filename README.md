@@ -5,11 +5,13 @@ Please consider this software insecure.
 This software helps coordinating the signing process of a message between multiple co-signers using **MuSig2** based on Schnorr signatures.  
 MuSig2 only requires 2 rounds of communication between co-signers.
 
+![](./res/demo.png)
+
 ## Server
 ### Usage
 ```bash
 $ make server
-$ ./server -p 3555
+$ ./server start -p 3555
 ```
 
 ## Client
