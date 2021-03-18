@@ -1,10 +1,13 @@
 package coordinator
 
 import (
+	"bytes"
+	"encoding/hex"
 	"fmt"
 	"os"
 
 	server "github.com/aureleoules/go-packet-server"
+	"go.uber.org/zap"
 )
 
 var sessions = make(map[[32]byte]*SigningSession)
@@ -13,14 +16,16 @@ const (
 	ConnectSessionCommand byte = iota
 	SesssionReadyCommand
 	BroadcastNoncesCommand
+	BroadcastPartialSigCommand
 )
 
 func Server() {
 	s := server.New("localhost:3555")
 
 	s.OnConnected(func(s *server.Session) {})
-	s.OnDisconnected(func(s *server.Session) {})
+	s.OnDisconnected(func(s *server.Session) {
 
+	})
 	s.On(ConnectSessionCommand, func(s *server.Session, p *server.Packet) {
 		payload, err := extractPayload(p.Buffer())
 		if err != nil {
@@ -57,6 +62,8 @@ func Server() {
 			sessions[id].Signers[pub] = signer
 		}
 
+		zap.S().Info(hex.EncodeToString(pub[:6]), " joined signing session.")
+
 		if int(nCosigners) == len(sessions[id].Signers) {
 			for _, signer := range sessions[id].Signers {
 				signer.conn.SendPacket(server.NewPacket(SesssionReadyCommand))
@@ -65,20 +72,51 @@ func Server() {
 	})
 
 	s.On(BroadcastNoncesCommand, func(s *server.Session, p *server.Packet) {
-		// payload, err := extractPayload(p.Buffer())
-		// if err != nil {
-		// 	fmt.Println(err)
-		// 	return
-		// }
+		zap.S().Info("Received public nonces.")
+		payload, err := extractPayload(p.Buffer())
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 
-		// pub := extractPubKey(payload)
-		// id := extractSessionID(payload)
+		id := extractSessionID(payload)
+		pub := extractPubKey(payload)
 
-		// nonces := extractNonces(payload)
+		for _, signer := range sessions[id].Signers {
+			if bytes.Equal(signer.PubKey, pub[:]) {
+				continue
+			}
+			signer.conn.SendPacket(p)
+		}
+	})
 
-		// for _, s := range sessions[id].Signers {
-		// 	s.conn.SendPacket(p)
-		// }
+	s.On(BroadcastPartialSigCommand, func(s *server.Session, p *server.Packet) {
+		zap.S().Info("Received partial signature.")
+		payload, err := extractPayload(p.Buffer())
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		id := extractSessionID(payload)
+		pub := extractPubKey(payload)
+
+		sessions[id].receivedPartialSigs++
+
+		for _, signer := range sessions[id].Signers {
+			if bytes.Equal(signer.PubKey, pub[:]) {
+				continue
+			}
+			signer.conn.SendPacket(p)
+		}
+
+		if sessions[id].receivedPartialSigs == int(sessions[id].ExpectedCosigners) {
+			delete(sessions, id)
+		}
+	})
+
+	s.OnUnknownPacket(func(s *server.Session, p *server.Packet) {
+		zap.S().Warn("Received unknown packet.")
 	})
 
 	err := s.Start()

@@ -1,4 +1,4 @@
-package musig
+package musig2
 
 import (
 	"crypto/sha256"
@@ -26,6 +26,19 @@ type Key struct {
 
 func (s *Signature) Encode() []byte {
 	return append(encodePoint(s.R), encodeScalar(s.S)...)
+}
+
+func DecodeSignature(sig []byte) (*Signature, error) {
+	p := curve.Point()
+	err := p.UnmarshalBinary(sig[:32])
+	if err != nil {
+		return nil, err
+	}
+	s := curve.Scalar().SetBytes(sig[32:])
+	return &Signature{
+		R: p,
+		S: s,
+	}, nil
 }
 
 func Sign(msg []byte, key *Key) *Signature {
@@ -74,7 +87,7 @@ func AggregateSignatures(sigs ...kyber.Scalar) kyber.Scalar {
 	return s
 }
 
-func computeR(msg []byte, RValues []kyber.Point, pubKeys ...kyber.Point) kyber.Point {
+func ComputeR(msg []byte, RValues []kyber.Point, pubKeys ...kyber.Point) kyber.Point {
 	R := curve.Point().Null()
 	for j, Rj := range RValues {
 		b := computeB(uint64(j), msg, RValues, pubKeys...)

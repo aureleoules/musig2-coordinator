@@ -1,10 +1,73 @@
 package coordinator
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
-	"musig"
+
+	server "github.com/aureleoules/go-packet-server"
+	musig "github.com/aureleoules/musig2-coordinator/musig2"
+	"go.dedis.ch/kyber/v3"
 )
+
+func packetHeader(sessionID []byte, pub kyber.Point) []byte {
+	b, _ := pub.MarshalBinary()
+	return append(sessionID, b...)
+}
+
+func createConnectPacket(s *clientSigningSession) *server.Packet {
+	var payload bytes.Buffer
+	payload.Write(packetHeader(s.ID, s.Key.Pub))
+
+	var b = make([]byte, 2)
+	binary.BigEndian.PutUint16(b, s.ExpectedCosigners)
+	payload.Write(b)
+
+	sig := musig.Sign(payload.Bytes(), s.Key).Encode()
+	payload.Write(sig)
+
+	p := server.NewPacket(ConnectSessionCommand)
+	p.SetBytes(payload.Bytes())
+
+	return p
+}
+
+func createNoncesPacket(s *clientSigningSession, nonces ...*musig.Key) *server.Packet {
+	var payload bytes.Buffer
+	payload.Write(packetHeader(s.ID, s.Key.Pub))
+
+	var b = make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(len(nonces)))
+	payload.Write(b)
+
+	for _, r := range nonces {
+		R, _ := r.Pub.MarshalBinary()
+		payload.Write(R)
+	}
+
+	sig := musig.Sign(payload.Bytes(), s.Key).Encode()
+	payload.Write(sig)
+
+	p := server.NewPacket(BroadcastNoncesCommand)
+	p.SetBytes(payload.Bytes())
+
+	return p
+}
+
+func createPartialSigPacket(s *clientSigningSession, partialSig []byte) *server.Packet {
+	var payload bytes.Buffer
+	payload.Write(packetHeader(s.ID, s.Key.Pub))
+
+	payload.Write(partialSig)
+
+	sig := musig.Sign(payload.Bytes(), s.Key).Encode()
+	payload.Write(sig)
+
+	p := server.NewPacket(BroadcastPartialSigCommand)
+	p.SetBytes(payload.Bytes())
+
+	return p
+}
 
 func extractSessionID(data []byte) [32]byte {
 	var id [32]byte
@@ -58,4 +121,8 @@ func extractNonces(payload []byte) [][]byte {
 	}
 
 	return nonces
+}
+
+func extractPartialSig(payload []byte) []byte {
+	return payload[64 : 64+32]
 }

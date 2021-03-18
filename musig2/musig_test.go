@@ -1,4 +1,4 @@
-package musig
+package musig2
 
 import (
 	"testing"
@@ -37,8 +37,8 @@ func createSigner(noncesNum int) Signer {
 func TestManySigners(t *testing.T) {
 	msg := []byte("MuSig2")
 
-	signersNum := 10
-	noncesNum := 2
+	signersNum := 20
+	noncesNum := 3
 
 	var signers []Signer
 
@@ -67,7 +67,7 @@ func TestManySigners(t *testing.T) {
 		Rvalues = append(Rvalues, Rj)
 	}
 
-	R := computeR(msg, Rvalues, pubKeys...)
+	R := ComputeR(msg, Rvalues, pubKeys...)
 
 	var sigs []kyber.Scalar
 	for _, s := range signers {

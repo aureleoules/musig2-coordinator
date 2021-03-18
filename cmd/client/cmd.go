@@ -3,14 +3,12 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
-	"musig"
-	"musig/coordinator"
 	"os"
-	"strings"
+
+	"github.com/aureleoules/musig2-coordinator/coordinator"
+	musig "github.com/aureleoules/musig2-coordinator/musig2"
 
 	"github.com/spf13/cobra"
-	"go.dedis.ch/kyber/v3"
 )
 
 var (
@@ -29,6 +27,9 @@ func init() {
 	rootCmd.AddCommand(signManyCmd)
 
 	rootCmd.AddCommand(newKeysCmd)
+
+	verifyCmd.Flags().StringVarP(&pubKeySetFile, "pubkeys", "p", "", "public keys set of co-signers")
+	rootCmd.AddCommand(verifyCmd)
 }
 
 var rootCmd = &cobra.Command{
@@ -76,39 +77,69 @@ var signManyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		msg := []byte(args[0])
 
-		d, err := ioutil.ReadFile(pubKeySetFile)
+		keySet, err := readKeySet(pubKeySetFile)
 		if err != nil {
-			fmt.Println("no such file")
+			fmt.Println(err)
 			os.Exit(1)
 		}
-		keys := strings.Split(string(d), "\n")
-		if len(keys) <= 1 {
-			fmt.Println("requires more than 1 signer")
+		key, err := loadKey(keyFile)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		coordinator.StartSession(serverAddr, keySet, msg, key)
+	},
+}
+
+var verifyCmd = &cobra.Command{
+	Use:   "verify",
+	Short: "Verify a signature against one or more public keys",
+	Run: func(cmd *cobra.Command, args []string) {
+		if len(args) < 2 {
+			fmt.Println("Not enough arguments.")
+			os.Exit(1)
 			return
 		}
-
-		var keySet []kyber.Point
-
-		for _, k := range keys {
-			if k == "" {
-				continue
-			}
-			kb, err := hex.DecodeString(k)
-			if err != nil {
-				fmt.Println("invalid key")
-				os.Exit(1)
-			}
-
-			key := musig.Curve().Point()
-			if key.UnmarshalBinary(kb) != nil {
-				fmt.Println("invalid key")
-				os.Exit(1)
-			}
-
-			keySet = append(keySet, key)
-
+		msg := []byte(args[0])
+		data, err := hex.DecodeString(args[1])
+		if err != nil {
+			fmt.Println("malformated signature")
 		}
-		key, err := loadKey(keyFile)
-		coordinator.StartSession(serverAddr, keySet, msg, key)
+		sig, err := musig.DecodeSignature(data)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		var valid bool
+		if pubKeySetFile != "" {
+			keySet, err := readKeySet(pubKeySetFile)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			valid = musig.VerifySignature(msg, sig, keySet...)
+		} else {
+			if len(args) < 3 {
+				fmt.Println("You must provide a public key.")
+				os.Exit(1)
+				return
+			}
+			pub, err := hex.DecodeString(args[2])
+			if err != nil {
+				fmt.Println("malformated pubkey")
+				os.Exit(1)
+			}
+			p := musig.Curve().Point()
+			p.UnmarshalBinary(pub)
+
+			valid = musig.VerifySignature(msg, sig, p)
+		}
+
+		if valid {
+			fmt.Println("Signature is valid.")
+		} else {
+			fmt.Println("Signature is invalid.")
+		}
 	},
 }
