@@ -1,7 +1,10 @@
 package main
 
-import "github.com/aureleoules/musig2-coordinator/coordinator"
+import "os"
 
 func main() {
-	coordinator.Server()
+	if err := rootCmd.Execute(); err != nil {
+		_ = rootCmd.Help()
+		os.Exit(1)
+	}
 }

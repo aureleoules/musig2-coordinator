@@ -9,7 +9,7 @@ MuSig2 only requires 2 rounds of communication between co-signers.
 ### Usage
 ```bash
 $ make server
-$ ./server
+$ ./server -p 3555
 ```
 
 ## Client

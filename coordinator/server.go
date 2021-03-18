@@ -19,8 +19,8 @@ const (
 	BroadcastPartialSigCommand
 )
 
-func Server() {
-	s := server.New("localhost:3555")
+func Server(port string) {
+	s := server.New(":" + port)
 
 	s.OnConnected(func(s *server.Session) {})
 	s.OnDisconnected(func(s *server.Session) {
@@ -119,6 +119,7 @@ func Server() {
 		zap.S().Warn("Received unknown packet.")
 	})
 
+	zap.S().Info("MuSig2 coordinator started on :", port)
 	err := s.Start()
 	if err != nil {
 		fmt.Println(err)
